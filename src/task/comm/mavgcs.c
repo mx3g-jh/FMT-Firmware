@@ -25,6 +25,7 @@
 #include "module/sensor/sensor_hub.h"
 #include "module/sysio/gcs_cmd.h"
 #include "module/system/statistic.h"
+#include "module/sysio/pilot_cmd.h"
 #include "task_comm.h"
 
 #undef LOG_TAG
@@ -35,6 +36,7 @@ MCN_DECLARE(sensor_mag0);
 MCN_DECLARE(sensor_baro);
 MCN_DECLARE(sensor_gps);
 MCN_DECLARE(mission_data);
+MCN_DECLARE(pilot_cmd);
 
 MCN_DEFINE(external_state, sizeof(mavlink_fmt_external_state_t));
 
@@ -319,6 +321,24 @@ static fmt_err_t handle_mavlink_message(mavlink_message_t* msg, mavlink_system_t
 
                 mavproxy_send_immediate_msg(MAVPROXY_GCS_CHAN, msg, false);
             }
+        }
+    } break;
+
+    case MAVLINK_MSG_ID_MANUAL_CONTROL: {
+        if (this_system.sysid == mavlink_msg_manual_control_get_target(msg)) {
+            mavlink_manual_control_t manual_control_t;
+            mavlink_msg_manual_control_decode(msg, &manual_control_t);
+
+            Pilot_Cmd_Bus pilot_cmd_bus;
+            pilot_cmd_bus.timestamp = systime_now_ms();
+
+            pilot_cmd_bus.stick_yaw = (float)(manual_control_t.r) * 0.001f;
+            /* Convert throttle mapping from 0 to 1 in QGC to -1 to 1 for FMT */
+            pilot_cmd_bus.stick_throttle = (float)(manual_control_t.z * 2 - 1000) * 0.001f;
+            pilot_cmd_bus.stick_roll = (float)(manual_control_t.y) * 0.001f;
+            pilot_cmd_bus.stick_pitch = (float)(manual_control_t.x) * 0.001f;
+            //TODO: Support mode/cmd
+            mcn_publish(MCN_HUB(pilot_cmd), &pilot_cmd_bus);
         }
     } break;
 
